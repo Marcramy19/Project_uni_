@@ -2,49 +2,48 @@
 
 import { useState } from "react";
 
-export default function Home() {
-  const [messages, setMessages] = useState<{ sender: string; text: string }[]>(
-    []
-  );
+
+const N8N_URL = process.env.NEXT_PUBLIC_N8N_BASE_URL;
+const N8N_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_PATH;
+if (typeof window !== "undefined") {
+  console.log("N8N_URL", N8N_URL, "N8N_PATH", N8N_PATH);
+}
+
+export default function ChatBot() {
+  const [messages, setMessages] = useState<{ sender: string; text: string }[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  const sendMessage = async () => {
-    const text = input.trim();
-    if (!text || loading) return;
+  const sendMessage = async (input: string) => {
+    const url = `${N8N_URL}${N8N_PATH}?message=${encodeURIComponent(input)}`;
+    console.log("Sending to n8n:", url); // Debug line
+    const res = await fetch(url, {
+      method: "GET",
+    });
+    if (!res.ok) throw new Error("Failed to fetch from n8n");
+    const data = await res.json().catch(() => null);
+    return data?.reply || "✅ Sent to n8n";
+  };
 
-    setMessages((prev) => [...prev, { sender: "user", text }]);
-    setInput("");
-    setLoading(true);
+  const handleSendMessage = async () => {
+    if (!input.trim()) return;
+
+    setMessages((prev) => [...prev, { sender: "user", text: input }]);
 
     try {
-      // Call your own API; it forwards to n8n as GET with ?message=
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      const reply =
-        typeof data?.reply === "string"
-          ? data.reply
-          : (data && JSON.stringify(data)) || "✅ Sent to n8n";
-
-      setMessages((prev) => [...prev, { sender: "bot", text: reply }]);
+      const reply = await sendMessage(input);
+      setMessages((prev) => [
+        ...prev,
+        { sender: "bot", text: reply },
+      ]);
     } catch (err) {
       console.error(err);
       setMessages((prev) => [
         ...prev,
         { sender: "bot", text: "❌ Error connecting to n8n" },
       ]);
-    } finally {
-      setLoading(false);
     }
-  };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") sendMessage();
+    setInput("");
   };
 
   return (
@@ -67,9 +66,6 @@ export default function Home() {
               </span>
             </div>
           ))}
-          {loading && (
-            <div className="text-left text-sm text-gray-500">bot is typing…</div>
-          )}
         </div>
 
         <div className="flex gap-2">
@@ -77,14 +73,12 @@ export default function Home() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
             className="flex-1 border rounded px-3 py-2"
             placeholder="Type a message..."
           />
           <button
-            onClick={sendMessage}
-            className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-            disabled={loading}
+            onClick={handleSendMessage}
+            className="bg-blue-600 text-white px-4 py-2 rounded"
           >
             Send
           </button>
